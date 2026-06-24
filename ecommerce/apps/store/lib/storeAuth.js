@@ -78,6 +78,18 @@ export function StoreAuthProvider({ children }) {
 
 export function useStoreAuth() {
   const ctx = useContext(StoreAuthContext)
+  if (typeof window === 'undefined') {
+    // During server-side rendering, return a safe default
+    return {
+      client: null,
+      loading: true,
+      setClient: () => { },
+      requestOtp: async () => { },
+      verifyOtp: async () => { },
+      logout: async () => { },
+      updateProfile: async () => { }
+    }
+  }
   if (!ctx) throw new Error('useStoreAuth must be used within StoreAuthProvider')
   return ctx
 }

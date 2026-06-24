@@ -2,10 +2,8 @@ import Link from 'next/link';
 import ProductListWithLoadMore from '@/components/ProductListWithLoadMore';
 import prisma from '@/lib/prisma';
 
-export async function generateStaticParams() {
-  const types = await prisma.productType.findMany({ where: { isActive: true } });
-  return types.map((t) => ({ slug: t.slug }));
-}
+// Disable static generation since we need database access
+export const dynamic = 'force-dynamic';
 
 async function getData(slug, tierSlug, sort, page) {
   const type = await prisma.productType.findUnique({ where: { slug } });

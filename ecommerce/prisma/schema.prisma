@@ -1,0 +1,499 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Owner {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  phone        String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workshop           Workshop?
+  workers            Worker[]
+  clients            Client[]
+  jobs               Job[]
+  payrolls           PayrollRecord[]
+  agentConversations AgentConversation[]
+}
+
+model Workshop {
+  id              String   @id @default(cuid())
+  ownerId         String   @unique
+  owner           Owner    @relation(fields: [ownerId], references: [id])
+  name            String
+  slug            String   @unique
+  description     String?
+  whatsappNumber  String
+  logoUrl         String?
+  location        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clients         Client[]
+  gallery         WorkshopGallery[]
+  services        WorkshopService[]
+}
+
+model Worker {
+  id              String             @id @default(cuid())
+  ownerId         String
+  owner           Owner              @relation(fields: [ownerId], references: [id])
+  name            String
+  phone           String
+  baseSalary      Float
+  lunchAllowance  Float              @default(0)
+  isActive        Boolean            @default(true)
+  token           String             @unique @default(cuid())
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  inviteToken       String?          @unique
+  inviteExpiresAt   DateTime?
+  inviteStatus      InviteStatus     @default(PENDING)
+  sessionToken      String?          @unique
+  sessionExpiresAt  DateTime?
+  lastActiveAt      DateTime?
+  accessState       WorkerAccessState @default(ACTIVE)
+  permissions       Json             @default("{\"canRequestAdvance\":true,\"canRequestLunch\":true,\"canReportAbsence\":true,\"canRequestMaterials\":true,\"canViewPayHistory\":true,\"canSeeClientName\":false}")
+  notificationLanguage String         @default("rw")
+
+  jobs              Job[]
+  advanceRequests   AdvanceRequest[]
+  lunchRequests     LunchRequest[]
+  absenceLogs       AbsenceLog[]
+  materialRequests  MaterialRequest[]
+  payrolls          PayrollRecord[]
+}
+
+model Client {
+  id           String        @id @default(cuid())
+  ownerId      String
+  owner        Owner         @relation(fields: [ownerId], references: [id])
+  workshopId   String
+  workshop     Workshop      @relation(fields: [workshopId], references: [id])
+  name         String
+  phone        String
+  token        String        @unique @default(cuid())
+  onboardedVia OnboardSource @default(WHATSAPP)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  sessionToken      String?  @unique
+  sessionExpiresAt  DateTime?
+  lastActiveAt      DateTime?
+  isBlocked         Boolean  @default(false)
+  blockedReason     String?
+  isActive          Boolean  @default(true)
+  ownerNotes        String?
+  permissions       Json     @default("{\"canPlaceOrders\":true,\"canSeeInvoiceAmounts\":true,\"canAccessPortal\":true}")
+
+  jobs         Job[]
+  invoices     Invoice[]
+}
+
+model Job {
+  id              String    @id @default(cuid())
+  ownerId         String
+  owner           Owner     @relation(fields: [ownerId], references: [id])
+  clientId        String
+  client          Client    @relation(fields: [clientId], references: [id])
+  workerId        String?
+  worker          Worker?   @relation(fields: [workerId], references: [id])
+  description     String
+  status          JobStatus @default(NEW)
+  invoiceAmount   Float?
+  materialCost    Float     @default(0)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  paidAt          DateTime?
+
+  materialRequests  MaterialRequest[]
+  invoices          Invoice[]
+  activityLogs      ActivityLog[]
+}
+
+model ProductType {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+}
+
+model PriceTier {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+
+  products    Product[]
+}
+
+model Product {
+  id               String              @id @default(cuid())
+  name             String
+  slug             String              @unique
+  description      String              @db.Text
+  price            Float
+  productTypeId    String
+  productType      ProductType         @relation(fields: [productTypeId], references: [id])
+  priceTierId      String
+  priceTier        PriceTier           @relation(fields: [priceTierId], references: [id])
+  material         String?
+  dimensions       String?
+  availability     ProductAvailability @default(MADE_TO_ORDER)
+  estimatedDays    Int?
+  allowCustomNotes Boolean             @default(true)
+  isActive         Boolean             @default(true)
+  isFeatured       Boolean             @default(false)
+  viewCount        Int                 @default(0)
+  likesCount       Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  images           ProductImage[]
+  storeOrders      StoreOrder[]
+  productLikes     ProductLike[]
+  productViews     ProductView[]
+}
+
+model ProductImage {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  altText     String?
+  isPrimary   Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model StoreClient {
+  id             String      @id @default(cuid())
+  name           String
+  phone          String
+  email          String?
+  marketingOptIn Boolean     @default(false)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  orders         StoreOrder[]
+  session        ClientSession?
+  otps           ClientOTP[]
+  preference     ClientPreference?
+  productViews   ProductView[]
+  productLikes   ProductLike[]
+}
+
+model StoreOrder {
+  id              String           @id @default(cuid())
+  orderNumber     String           @unique
+  productId       String
+  product         Product          @relation(fields: [productId], references: [id])
+  clientName      String
+  clientPhone     String
+  clientEmail     String?
+  quantity        Int              @default(1)
+  unitPrice       Float
+  totalPrice      Float
+  customNotes     String?          @db.Text
+  deliveryMethod  DeliveryMethod   @default(PICKUP)
+  deliveryAddress String?
+  orderType       OrderType        @default(ORDER)
+  status          StoreOrderStatus @default(PENDING)
+  paymentStatus   PaymentStatus    @default(UNPAID)
+  depositAmount   Float?
+  paidAt          DateTime?
+  lastInvoiceSentAt DateTime?
+  storeClientId   String?
+  storeClient     StoreClient?     @relation(fields: [storeClientId], references: [id])
+  jobId           String?
+  clientId        String?
+  cancelReason      String?
+  verificationCode  String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+enum OrderType {
+  DAILY_SALE
+  ORDER
+}
+
+// ── Client Identity / Auth ─────────────────────────────────
+
+model ClientOTP {
+  id        String    @id @default(cuid())
+  clientId  String
+  client    StoreClient @relation(fields: [clientId], references: [id])
+  otp       String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model ClientSession {
+  id        String    @id @default(cuid())
+  clientId  String    @unique
+  client    StoreClient @relation(fields: [clientId], references: [id])
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+}
+
+// ── Tracking / Behaviour ───────────────────────────────────
+
+model ProductView {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    StoreClient @relation(fields: [clientId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([productId])
+}
+
+model ProductLike {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    StoreClient @relation(fields: [clientId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, productId])
+  @@index([productId])
+}
+
+model ClientPreference {
+  id         String   @id @default(cuid())
+  clientId   String   @unique
+  client     StoreClient @relation(fields: [clientId], references: [id])
+  categories Json     @default("[]")
+  tags       Json     @default("[]")
+  priceMin   Float?
+  priceMax   Float?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+}
+
+enum InviteStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
+enum WorkerAccessState {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+  REVOKED
+}
+
+enum OnboardSource {
+  WHATSAPP
+  WEB
+  QR
+  MANUAL
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum JobStatus {
+  NEW
+  CONFIRMED
+  IN_PROGRESS
+  READY
+  PAID
+  CANCELLED
+}
+
+enum ProductAvailability {
+  IN_STOCK
+  MADE_TO_ORDER
+}
+
+enum StoreOrderStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  DEPOSIT
+  PAID
+}
+
+enum DeliveryMethod {
+  PICKUP
+  DELIVERY
+}
+
+model AdvanceRequest {
+  id          String        @id @default(cuid())
+  workerId    String
+  worker      Worker        @relation(fields: [workerId], references: [id])
+  ownerId     String
+  amount      Float
+  status      RequestStatus @default(PENDING)
+  requestedAt DateTime      @default(now())
+  resolvedAt  DateTime?
+}
+
+model LunchRequest {
+  id          String        @id @default(cuid())
+  workerId    String
+  worker      Worker        @relation(fields: [workerId], references: [id])
+  ownerId     String
+  days        Int
+  totalAmount Float
+  status      RequestStatus @default(PENDING)
+  requestedAt DateTime      @default(now())
+  resolvedAt  DateTime?
+}
+
+model AbsenceLog {
+  id            String   @id @default(cuid())
+  workerId      String
+  worker        Worker   @relation(fields: [workerId], references: [id])
+  ownerId       String
+  date          DateTime @default(now())
+  isDeductible  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model MaterialRequest {
+  id          String        @id @default(cuid())
+  workerId    String
+  worker      Worker        @relation(fields: [workerId], references: [id])
+  jobId       String
+  job         Job           @relation(fields: [jobId], references: [id])
+  ownerId     String
+  description String
+  amount      Float
+  status      RequestStatus @default(PENDING)
+  requestedAt DateTime      @default(now())
+  resolvedAt  DateTime?
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id])
+  ownerId   String
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  amount    Float
+  sentAt    DateTime @default(now())
+  paidAt    DateTime?
+}
+
+model PayrollRecord {
+  id                     String   @id @default(cuid())
+  workerId               String
+  worker                 Worker   @relation(fields: [workerId], references: [id])
+  ownerId                String
+  owner                  Owner    @relation(fields: [ownerId], references: [id])
+  month                  Int
+  year                   Int
+  baseSalary             Float
+  totalAdvances          Float    @default(0)
+  totalLunchFees         Float    @default(0)
+  totalAbsenceDeductions Float    @default(0)
+  netPay                 Float
+  confirmedAt            DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id])
+  actor     String
+  action    String
+  createdAt DateTime @default(now())
+}
+
+model WorkshopGallery {
+  id          String   @id @default(cuid())
+  workshopId  String
+  workshop    Workshop @relation(fields: [workshopId], references: [id])
+  imageUrl    String
+  caption     String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model WorkshopService {
+  id          String   @id @default(cuid())
+  workshopId  String
+  workshop    Workshop @relation(fields: [workshopId], references: [id])
+  name        String
+  description String?
+  priceFrom   Float?
+  priceTo     Float?
+  order       Int      @default(0)
+}
+
+model AgentConversation {
+  id         String        @id @default(cuid())
+  ownerId    String
+  owner      Owner         @relation(fields: [ownerId], references: [id])
+  channel    AgentChannel  @default(DASHBOARD)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  messages   AgentMessage[]
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id])
+  role           AgentRole
+  content        String            @db.Text
+  actionTaken    String?
+  actionResult   String?
+  createdAt      DateTime          @default(now())
+}
+
+enum AgentChannel {
+  WHATSAPP
+  DASHBOARD
+}
+
+enum AgentRole {
+  USER
+  ASSISTANT
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

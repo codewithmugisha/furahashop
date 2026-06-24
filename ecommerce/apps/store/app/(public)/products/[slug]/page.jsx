@@ -13,10 +13,7 @@ function OrderFormSection({ product }) {
   return <OrderFormSectionClient product={product} />;
 }
 
-export async function generateStaticParams() {
-  const products = await prisma.product.findMany({ where: { isActive: true }, select: { slug: true } });
-  return products.map((p) => ({ slug: p.slug }));
-}
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }) {
   const product = await prisma.product.findUnique({

@@ -6,6 +6,8 @@ import StoreButton from '@/components/StoreButton';
 import ClientRecommendedRow from '@/components/ClientRecommendedRow';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 async function getFeaturedProducts() {
   return prisma.product.findMany({
     where: { isActive: true, isFeatured: true },

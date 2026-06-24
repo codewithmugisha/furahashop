@@ -3,10 +3,8 @@ import ProductCard from '@/components/ProductCard';
 import PriceTierBadge from '@/components/PriceTierBadge';
 import prisma from '@/lib/prisma';
 
-export async function generateStaticParams() {
-  const tiers = await prisma.priceTier.findMany({ where: { isActive: true } });
-  return tiers.map((t) => ({ slug: t.slug }));
-}
+// Disable static generation since we need database access
+export const dynamic = 'force-dynamic';
 
 async function getData(slug, typeSlug, sort, page) {
   const tier = await prisma.priceTier.findUnique({ where: { slug } });
