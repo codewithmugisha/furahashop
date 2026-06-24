@@ -23,7 +23,7 @@ async function getFeaturedProducts() {
 
 async function getProductTypes() {
   return prisma.productType.findMany({
-    where: { isActive: true, products: { some: { isActive: true } } },
+    where: { isActive: true },
     include: { _count: { select: { products: { where: { isActive: true } } } } },
     orderBy: { order: 'asc' },
   });
