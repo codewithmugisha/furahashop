@@ -1,6 +1,7 @@
 import { neon, neonConfig } from '@neondatabase/serverless';
 
 neonConfig.poolQueryViaFetch = true;
+neonConfig.fetchFunction = globalThis.fetch;
 
 let sql;
 
@@ -32,27 +33,27 @@ function toParamIdx(idx) {
   return `$${idx}`;
 }
 
-function buildWhere(where) {
+function buildWhere(where, state) {
   if (!where || Object.keys(where).length === 0) return { clause: '', params: [] };
   const parts = [];
   const params = [];
-  let idx = 0;
+  if (!state) state = { idx: 0 };
 
   for (const [key, val] of Object.entries(where)) {
     if (key === 'AND' && Array.isArray(val)) {
-      const sub = val.map(v => buildWhere(v));
+      const sub = val.map(v => buildWhere(v, state));
       parts.push(`(${sub.map(s => s.clause).join(' AND ')})`);
       for (const s of sub) { params.push(...s.params); }
       continue;
     }
     if (key === 'OR' && Array.isArray(val)) {
-      const sub = val.map(v => buildWhere(v));
+      const sub = val.map(v => buildWhere(v, state));
       parts.push(`(${sub.map(s => s.clause).join(' OR ')})`);
       for (const s of sub) { params.push(...s.params); }
       continue;
     }
     if (key === 'NOT' && typeof val === 'object') {
-      const sub = buildWhere(val);
+      const sub = buildWhere(val, state);
       parts.push(`NOT (${sub.clause})`);
       params.push(...sub.params);
       continue;
@@ -63,17 +64,17 @@ function buildWhere(where) {
       parts.push(`${col} IS NULL`);
     } else if (typeof val === 'object' && !(val instanceof Date)) {
       for (const [op, opVal] of Object.entries(val)) {
-        idx++;
+        state.idx++;
         switch (op) {
           case 'equals':
-            parts.push(`${col} = ${toParamIdx(idx)}`);
+            parts.push(`${col} = ${toParamIdx(state.idx)}`);
             params.push(opVal);
             break;
           case 'not':
             if (opVal === null) {
               parts.push(`${col} IS NOT NULL`);
             } else {
-              parts.push(`${col} != ${toParamIdx(idx)}`);
+              parts.push(`${col} != ${toParamIdx(state.idx)}`);
               params.push(opVal);
             }
             break;
@@ -81,7 +82,7 @@ function buildWhere(where) {
             if (Array.isArray(opVal) && opVal.length === 0) {
               parts.push('1=0');
             } else {
-              const phs = opVal.map((_, i) => { idx++; return toParamIdx(idx); });
+              const phs = opVal.map((_, i) => { state.idx++; return toParamIdx(state.idx); });
               parts.push(`${col} IN (${phs.join(', ')})`);
               params.push(...opVal);
             }
@@ -90,47 +91,47 @@ function buildWhere(where) {
             if (Array.isArray(opVal) && opVal.length === 0) {
               // no-op
             } else {
-              const phs = opVal.map((_, i) => { idx++; return toParamIdx(idx); });
+              const phs = opVal.map((_, i) => { state.idx++; return toParamIdx(state.idx); });
               parts.push(`${col} NOT IN (${phs.join(', ')})`);
               params.push(...opVal);
             }
             break;
           case 'lt':
-            parts.push(`${col} < ${toParamIdx(idx)}`);
+            parts.push(`${col} < ${toParamIdx(state.idx)}`);
             params.push(opVal);
             break;
           case 'lte':
-            parts.push(`${col} <= ${toParamIdx(idx)}`);
+            parts.push(`${col} <= ${toParamIdx(state.idx)}`);
             params.push(opVal);
             break;
           case 'gt':
-            parts.push(`${col} > ${toParamIdx(idx)}`);
+            parts.push(`${col} > ${toParamIdx(state.idx)}`);
             params.push(opVal);
             break;
           case 'gte':
-            parts.push(`${col} >= ${toParamIdx(idx)}`);
+            parts.push(`${col} >= ${toParamIdx(state.idx)}`);
             params.push(opVal);
             break;
           case 'contains':
-            parts.push(`${col}::text LIKE ${toParamIdx(idx)}`);
+            parts.push(`${col}::text LIKE ${toParamIdx(state.idx)}`);
             params.push(`%${opVal}%`);
             break;
           case 'startsWith':
-            parts.push(`${col}::text LIKE ${toParamIdx(idx)}`);
+            parts.push(`${col}::text LIKE ${toParamIdx(state.idx)}`);
             params.push(`${opVal}%`);
             break;
           case 'endsWith':
-            parts.push(`${col}::text LIKE ${toParamIdx(idx)}`);
+            parts.push(`${col}::text LIKE ${toParamIdx(state.idx)}`);
             params.push(`%${opVal}`);
             break;
           default:
-            parts.push(`${col} = ${toParamIdx(idx)}`);
+            parts.push(`${col} = ${toParamIdx(state.idx)}`);
             params.push(opVal);
         }
       }
     } else {
-      idx++;
-      parts.push(`${col} = ${toParamIdx(idx)}`);
+      state.idx++;
+      parts.push(`${col} = ${toParamIdx(state.idx)}`);
       params.push(val);
     }
   }
@@ -405,14 +406,25 @@ async function countInternal(modelName, args) {
   return parseInt(rows[0]?.cnt || 0, 10);
 }
 
+function generateId() {
+  const ts = Date.now().toString(36);
+  const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 17);
+  return `c${ts}${rand}`;
+}
+
 async function createInternal(modelName, args) {
   const { data } = args || {};
   if (!data || Object.keys(data).length === 0) {
     throw new Error('No data provided for create');
   }
 
-  const keys = Object.keys(data);
-  const values = keys.map(k => data[k]);
+  const enriched = { ...data };
+  if (!enriched.id) {
+    enriched.id = generateId();
+  }
+
+  const keys = Object.keys(enriched);
+  const values = keys.map(k => enriched[k]);
   const cols = keys.map(k => q(k)).join(', ');
   const phs = values.map((_, i) => toParamIdx(i + 1)).join(', ');
 
@@ -462,7 +474,8 @@ async function updateInternal(modelName, args) {
     }
   }
 
-  const { clause: whereClause, params: whereParams } = buildWhere(where);
+  const state = { idx };
+  const { clause: whereClause, params: whereParams } = buildWhere(where, state);
   const whereStr = whereClause ? `WHERE ${whereClause}` : '';
 
   const text = `UPDATE ${q(modelName)} SET ${setClauses.join(', ')} ${whereStr} RETURNING *`;
@@ -499,7 +512,8 @@ async function updateManyInternal(modelName, args) {
     }
   }
 
-  const { clause: whereClause, params: whereParams } = buildWhere(where);
+  const state = { idx };
+  const { clause: whereClause, params: whereParams } = buildWhere(where, state);
   const whereStr = whereClause ? `WHERE ${whereClause}` : '';
 
   const text = `UPDATE ${q(modelName)} SET ${setClauses.join(', ')} ${whereStr}`;
