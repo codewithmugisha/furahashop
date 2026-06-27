@@ -1,6 +1,6 @@
 import { verifyAdmin } from '@/lib/adminAuth';
 
-const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'http://localhost:3002';
+const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'https://mwarimu-whatsapp.mugishaivanbright250.workers.dev';
 
 export async function POST(request) {
   const auth = verifyAdmin(request);

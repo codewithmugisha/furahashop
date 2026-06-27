@@ -18,8 +18,8 @@ const R_DESC = {
 };
 
 const SHOP_NAME = 'Furaha Furniture Shop';
-const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || 'http://localhost:3001';
-const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'http://localhost:3002';
+const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || 'https://mwarimu.pages.dev';
+const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'https://mwarimu-whatsapp.mugishaivanbright250.workers.dev';
 
 async function sendStatusNotification(order, newStatus, cancelReason) {
   const desc = R_DESC[newStatus];

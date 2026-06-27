@@ -69,7 +69,7 @@ export async function POST(request) {
     // Job creation deferred until customer confirms via WhatsApp
 
     try {
-      const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'http://localhost:3002';
+      const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'https://mwarimu-whatsapp.mugishaivanbright250.workers.dev';
       const message = [
         `Muraho ${clientName},`,
         '',

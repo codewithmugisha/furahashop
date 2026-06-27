@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "pages:build": "npx @opennextjs/cloudflare build",
-    "pages:deploy": "npx wrangler pages deploy .open-next",
-    "pages:preview": "npx wrangler pages dev .open-next"
+    "deploy": "npx @opennextjs/cloudflare build && copy /Y .open-next\\worker.js .open-next\\_worker.js && npx wrangler pages deploy --branch main .open-next"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

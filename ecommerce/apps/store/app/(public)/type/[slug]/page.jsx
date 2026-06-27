@@ -46,10 +46,11 @@ async function getData(slug, tierSlug, sort, page) {
 }
 
 export default async function TypePage({ params, searchParams }) {
-  const { slug } = params;
-  const tierSlug = searchParams?.tier || '';
-  const sort = searchParams?.sort || 'newest';
-  const page = parseInt(searchParams?.page || '1', 10);
+  const { slug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const tierSlug = resolvedSearchParams?.tier || '';
+  const sort = resolvedSearchParams?.sort || 'newest';
+  const page = parseInt(resolvedSearchParams?.page || '1', 10);
 
   const data = await getData(slug, tierSlug, sort, page);
 

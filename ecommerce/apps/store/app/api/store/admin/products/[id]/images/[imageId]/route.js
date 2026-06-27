@@ -1,12 +1,5 @@
 import prisma from '@/lib/prisma';
 import { verifyAdmin } from '@/lib/adminAuth';
-import { v2 as cloudinary } from 'cloudinary';
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 async function deleteCloudinaryImage(imageUrl) {
   try {
@@ -14,7 +7,24 @@ async function deleteCloudinaryImage(imageUrl) {
     const filename = parts[parts.length - 1].split('.')[0];
     const folder = parts[parts.length - 2];
     const publicId = `${folder}/${filename}`;
-    await cloudinary.uploader.destroy(publicId);
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) {
+      console.error('Cloudinary credentials not configured');
+      return;
+    }
+    const auth = btoa(`${apiKey}:${apiSecret}`);
+    const formData = new URLSearchParams();
+    formData.append('public_id', publicId);
+    await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData,
+    });
   } catch (error) {
     console.error('Cloudinary delete error:', error);
   }

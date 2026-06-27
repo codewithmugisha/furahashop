@@ -1,7 +1,7 @@
 import prisma from '@/lib/prisma';
 
-const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'http://localhost:3002';
-const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || 'http://localhost:3001';
+const WORKER_URL = process.env.WHATSAPP_WORKER_URL || 'https://mwarimu-whatsapp.mugishaivanbright250.workers.dev';
+const STORE_URL = process.env.NEXT_PUBLIC_STORE_URL || 'https://mwarimu.pages.dev';
 
 export async function POST(request) {
   try {

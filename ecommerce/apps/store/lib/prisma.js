@@ -37,7 +37,9 @@ function buildWhere(where, state) {
   if (!where || Object.keys(where).length === 0) return { clause: '', params: [] };
   const parts = [];
   const params = [];
-  if (!state) state = { idx: 0 };
+  if (!state) state = {};
+  if (state.idx === undefined) state.idx = 0;
+  const modelName = state.modelName;
 
   for (const [key, val] of Object.entries(where)) {
     if (key === 'AND' && Array.isArray(val)) {
@@ -57,6 +59,38 @@ function buildWhere(where, state) {
       parts.push(`NOT (${sub.clause})`);
       params.push(...sub.params);
       continue;
+    }
+
+    const rel = modelName && RELATION_MAP[modelName] && RELATION_MAP[modelName][key];
+    if (rel && typeof val === 'object' && !(val instanceof Date) && !Array.isArray(val)) {
+      const ops = Object.keys(val);
+      if (ops.length === 1 && ['none', 'some', 'every'].includes(ops[0])) {
+        const op = ops[0];
+        const opVal = val[op];
+        const subModelName = rel.table;
+        let subWhere = null;
+        if (opVal && typeof opVal === 'object' && Object.keys(opVal).length > 0) {
+          subWhere = buildWhere(opVal, { ...state, modelName: subModelName });
+        }
+        const subClause = subWhere ? ` AND ${subWhere.clause}` : '';
+        const subWhereParams = subWhere ? subWhere.params : [];
+
+        if (op === 'none') {
+          parts.push(`NOT EXISTS (SELECT 1 FROM ${q(rel.table)} WHERE ${q(rel.table)}.${q(rel.foreignKey)} = ${q(modelName)}.id${subClause})`);
+          params.push(...subWhereParams);
+        } else if (op === 'some') {
+          parts.push(`EXISTS (SELECT 1 FROM ${q(rel.table)} WHERE ${q(rel.table)}.${q(rel.foreignKey)} = ${q(modelName)}.id${subClause})`);
+          params.push(...subWhereParams);
+        } else if (op === 'every') {
+          if (subWhere) {
+            parts.push(`NOT EXISTS (SELECT 1 FROM ${q(rel.table)} WHERE ${q(rel.table)}.${q(rel.foreignKey)} = ${q(modelName)}.id AND NOT (${subWhere.clause}))`);
+            params.push(...subWhereParams);
+          } else {
+            parts.push(`NOT EXISTS (SELECT 1 FROM ${q(rel.table)} WHERE ${q(rel.table)}.${q(rel.foreignKey)} = ${q(modelName)}.id)`);
+          }
+        }
+        continue;
+      }
     }
 
     const col = q(key);
@@ -238,6 +272,20 @@ const RELATION_MAP = {
   },
   StoreClient: {
     orders: { table: 'StoreOrder', foreignKey: 'storeClientId', isArray: true },
+    otps: { table: 'ClientOTP', foreignKey: 'clientId', isArray: true },
+    session: { table: 'ClientSession', foreignKey: 'clientId', isArray: false },
+    preference: { table: 'ClientPreference', foreignKey: 'clientId', isArray: false },
+    productViews: { table: 'ProductView', foreignKey: 'clientId', isArray: true },
+    productLikes: { table: 'ProductLike', foreignKey: 'clientId', isArray: true },
+  },
+  ClientSession: {
+    client: { table: 'StoreClient', foreignKey: 'clientId', isArray: false },
+  },
+  ClientOTP: {
+    client: { table: 'StoreClient', foreignKey: 'clientId', isArray: false },
+  },
+  ProductImage: {
+    product: { table: 'Product', foreignKey: 'productId', isArray: false },
   },
 };
 
@@ -330,7 +378,7 @@ async function resolveInclude(row, modelName, include) {
 
 async function findUniqueInternal(modelName, args) {
   const { where, include, select } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereClause = clause ? `WHERE ${clause}` : '';
 
   const selectClause = select
@@ -353,7 +401,7 @@ async function findUniqueInternal(modelName, args) {
 
 async function findFirstInternal(modelName, args) {
   const { where, include, orderBy, select } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereClause = clause ? `WHERE ${clause}` : '';
   const orderClause = buildOrderBy(orderBy);
 
@@ -374,7 +422,7 @@ async function findFirstInternal(modelName, args) {
 
 async function findManyInternal(modelName, args) {
   const { where, include, orderBy, skip, take, select } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereClause = clause ? `WHERE ${clause}` : '';
   const orderClause = buildOrderBy(orderBy);
   const limitClause = take ? `LIMIT ${take}` : '';
@@ -398,7 +446,7 @@ async function findManyInternal(modelName, args) {
 
 async function countInternal(modelName, args) {
   const { where } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereClause = clause ? `WHERE ${clause}` : '';
 
   const text = `SELECT COUNT(*)::int AS cnt FROM ${q(modelName)} ${whereClause}`;
@@ -474,7 +522,7 @@ async function updateInternal(modelName, args) {
     }
   }
 
-  const state = { idx };
+  const state = { idx, modelName };
   const { clause: whereClause, params: whereParams } = buildWhere(where, state);
   const whereStr = whereClause ? `WHERE ${whereClause}` : '';
 
@@ -512,7 +560,7 @@ async function updateManyInternal(modelName, args) {
     }
   }
 
-  const state = { idx };
+  const state = { idx, modelName };
   const { clause: whereClause, params: whereParams } = buildWhere(where, state);
   const whereStr = whereClause ? `WHERE ${whereClause}` : '';
 
@@ -523,7 +571,7 @@ async function updateManyInternal(modelName, args) {
 
 async function upsertInternal(modelName, args) {
   const { where, create, update } = args || {};
-  const { clause, params: whereParams } = buildWhere(where);
+  const { clause, params: whereParams } = buildWhere(where, { modelName });
 
   if (!clause) throw new Error('WHERE clause required for upsert');
 
@@ -536,7 +584,7 @@ async function upsertInternal(modelName, args) {
 
 async function deleteInternal(modelName, args) {
   const { where } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereStr = clause ? `WHERE ${clause}` : '';
 
   const text = `DELETE FROM ${q(modelName)} ${whereStr} RETURNING *`;
@@ -544,43 +592,134 @@ async function deleteInternal(modelName, args) {
   return rows[0] || null;
 }
 
+function buildGroupByOrderBy(orderBy) {
+  if (!orderBy) return '';
+  if (typeof orderBy === 'string') {
+    return `ORDER BY ${q(orderBy)} ASC`;
+  }
+  const parts = [];
+  const list = Array.isArray(orderBy) ? orderBy : [orderBy];
+  for (const item of list) {
+    const [key, val] = Object.entries(item)[0];
+    let dir = 'ASC';
+    let col = q(key);
+    if (typeof val === 'string') {
+      dir = val.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    } else if (typeof val === 'object') {
+      const [subKey, subVal] = Object.entries(val)[0];
+      dir = subVal === 'desc' ? 'DESC' : 'ASC';
+      if (key === '_count') col = `cnt_${subKey}`;
+      else if (key === '_sum') col = `sum_${subKey}`;
+      else if (key === '_max') col = `max_${subKey}`;
+      else if (key === '_min') col = `min_${subKey}`;
+      else if (key === '_avg') col = `avg_${subKey}`;
+    }
+    parts.push(`${col} ${dir}`);
+  }
+  return `ORDER BY ${parts.join(', ')}`;
+}
+
 async function groupByInternal(modelName, args) {
-  const { by, where, _count, _sum, orderBy, skip, take } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { by, where, _count, _sum, _max, _min, _avg, orderBy, skip, take } = args || {};
+  const { clause, params } = buildWhere(where, { modelName });
   const whereStr = clause ? `WHERE ${clause}` : '';
 
   const byCols = by.map(k => q(k)).join(', ');
   const selects = [byCols];
 
+  const countFields = [];
   if (_count) {
     if (_count === true) {
       selects.push(`COUNT(*)::int AS cnt`);
     } else {
       for (const field of Object.keys(_count)) {
         selects.push(`COUNT(${q(field)})::int AS cnt_${field}`);
+        countFields.push(field);
       }
     }
   }
 
+  const sumFields = [];
   if (_sum) {
     for (const [field, val] of Object.entries(_sum)) {
       if (val === true) {
         selects.push(`COALESCE(SUM(${q(field)}), 0) AS sum_${field}`);
+        sumFields.push(field);
       }
     }
   }
 
-  const orderClause = buildOrderBy(orderBy);
+  const maxFields = [];
+  if (_max) {
+    for (const [field, val] of Object.entries(_max)) {
+      if (val === true) {
+        selects.push(`MAX(${q(field)}) AS max_${field}`);
+        maxFields.push(field);
+      }
+    }
+  }
+
+  const minFields = [];
+  if (_min) {
+    for (const [field, val] of Object.entries(_min)) {
+      if (val === true) {
+        selects.push(`MIN(${q(field)}) AS min_${field}`);
+        minFields.push(field);
+      }
+    }
+  }
+
+  const avgFields = [];
+  if (_avg) {
+    for (const [field, val] of Object.entries(_avg)) {
+      if (val === true) {
+        selects.push(`AVG(${q(field)})::float AS avg_${field}`);
+        avgFields.push(field);
+      }
+    }
+  }
+
+  const orderClause = buildGroupByOrderBy(orderBy);
   const limitClause = take ? `LIMIT ${take}` : '';
   const offsetClause = skip ? `OFFSET ${skip}` : '';
 
   const text = `SELECT ${selects.join(', ')} FROM ${q(modelName)} ${whereStr} GROUP BY ${byCols} ${orderClause} ${limitClause} ${offsetClause}`;
-  return executeQuery(text, params);
+  const rows = await executeQuery(text, params);
+
+  return rows.map(row => {
+    const result = { ...row };
+    for (const field of countFields) {
+      if (!result._count) result._count = {};
+      result._count[field] = result[`cnt_${field}`];
+      delete result[`cnt_${field}`];
+    }
+    for (const field of sumFields) {
+      if (!result._sum) result._sum = {};
+      result._sum[field] = result[`sum_${field}`];
+      delete result[`sum_${field}`];
+    }
+    for (const field of maxFields) {
+      if (!result._max) result._max = {};
+      result._max[field] = result[`max_${field}`];
+      delete result[`max_${field}`];
+    }
+    for (const field of minFields) {
+      if (!result._min) result._min = {};
+      result._min[field] = result[`min_${field}`];
+      delete result[`min_${field}`];
+    }
+    for (const field of avgFields) {
+      if (!result._avg) result._avg = {};
+      result._avg[field] = result[`avg_${field}`];
+      delete result[`avg_${field}`];
+    }
+    return result;
+  });
 }
 
 async function aggregateInternal(modelName, args) {
   const { where, _sum, _count } = args || {};
-  const { clause, params } = buildWhere(where);
+  const { clause, params } = buildWhere(where, { modelName });
   const whereStr = clause ? `WHERE ${clause}` : '';
 
   const selects = [];
